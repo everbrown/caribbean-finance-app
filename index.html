@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diaspora Financial Analyst</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --caribbean-blue: #0077c2; /* Deep Blue Sea */
+            --lime-green: #a7d129; /* Vibrant Accent */
+            --sand-yellow: #f4d35e; /* Warm Sand */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        .container-card {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+        }
+        .btn-primary {
+            background-color: var(--caribbean-blue);
+            transition: background-color 0.2s;
+        }
+        .btn-primary:hover {
+            background-color: #005691;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--lime-green);
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Custom scrollbar for content area */
+        #results-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        #results-container::-webkit-scrollbar-thumb {
+            background-color: #e0e0e0;
+            border-radius: 3px;
+        }
+        #results-container::-webkit-scrollbar-track {
+            background-color: transparent;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 min-h-screen">
+
+    <!-- Main Application Card -->
+    <div class="max-w-4xl mx-auto bg-white rounded-xl container-card p-6 md:p-10">
+
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-gray-900 mb-2">Caribbean Diaspora Finance Hub</h1>
+            <p class="text-lg text-gray-600">Get grounded, up-to-date financial insights.</p>
+        </header>
+
+        <!-- Input Form -->
+        <form id="query-form" class="space-y-4 mb-8">
+            <div>
+                <label for="user-query" class="block text-sm font-medium text-gray-700 mb-1">Your Financial Question</label>
+                <textarea id="user-query" rows="2" placeholder="e.g., What are the best investment opportunities in renewable energy in Trinidad and Tobago right now?"
+                    class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition duration-150" required></textarea>
+            </div>
+            <button type="submit" id="submit-button" class="btn-primary text-white font-semibold py-3 px-6 rounded-lg w-full flex items-center justify-center">
+                <span id="button-text">Analyze & Search</span>
+                <span id="loader" class="loader hidden ml-3"></span>
+            </button>
+        </form>
+
+        <!-- Results Display Area -->
+        <div id="results-container">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Analysis Results</h2>
+
+            <!-- Message Area (for initial state, loading, or errors) -->
+            <div id="message-box" class="p-4 bg-blue-50 border-l-4 border-caribbean-blue rounded-lg text-gray-700 text-center transition duration-300">
+                Enter a question above to get financial insights from our Diaspora Analyst.
+            </div>
+
+            <!-- Content Area -->
+            <div id="generated-text" class="mt-6 prose max-w-none">
+                <!-- LLM response will be injected here -->
+            </div>
+
+            <!-- Citations/Sources Area -->
+            <div id="citations" class="mt-8 pt-4 border-t border-gray-200 hidden">
+                <h3 class="text-lg font-semibold text-gray-800 mb-3">Sources (Google Search Grounding)</h3>
+                <ul id="sources-list" class="space-y-2 text-sm text-gray-600">
+                    <!-- Sources will be injected here -->
+                </ul>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- Gemini API Configuration ---
+        const apiKey = ""; // API key will be provided by the environment
+        const modelName = 'gemini-2.5-flash-preview-09-2025';
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+        // --- DOM Elements ---
+        const form = document.getElementById('query-form');
+        const queryInput = document.getElementById('user-query');
+        const submitButton = document.getElementById('submit-button');
+        const buttonText = document.getElementById('button-text');
+        const loader = document.getElementById('loader');
+        const messageBox = document.getElementById('message-box');
+        const generatedTextContainer = document.getElementById('generated-text');
+        const citationsContainer = document.getElementById('citations');
+        const sourcesList = document.getElementById('sources-list');
+
+        // LLM System Instruction
+        const systemPrompt = "You are a specialized financial analyst and trusted advisor for the Caribbean diaspora. Your goal is to provide concise, professional, and actionable financial analyses or informational summaries based on the user's query. Use the gathered information to provide clear insights on topics like investments, remittances, real estate, and economic trends relevant to Caribbean nations. Start directly with the analysis and use Markdown formatting for readability (e.g., bullet points, bolding).";
+
+        /**
+         * Converts markdown text to HTML for safe display.
+         * Note: This is a simplified conversion. For full fidelity, a proper Markdown library is needed.
+         */
+        function simpleMarkdownToHtml(markdown) {
+            let html = markdown
+                .replace(/### (.*)/g, '<h3>$1</h3>')
+                .replace(/## (.*)/g, '<h2>$1</h2>')
+                .replace(/\*\*([^\*]+)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*([^\*]+)\*/g, '<em>$1</em>')
+                .replace(/\n\s*\*\s/g, '<ul><li>')
+                .replace(/\*\s/g, '</li><li>')
+                .replace(/<\/li><li>/g, '</li><li>') // Fix multiple replacement issues
+                .replace(/<\/ul><li>/g, '<ul><li>')
+                .replace(/(<\/li>)+/g, '</li>') // Clean up extra closing tags
+                .replace(/<\/ul>$/g, '') // Remove trailing </ul> if present
+                .replace(/<\/li>$/, '</li></ul>')
+                .replace(/(\r\n|\n|\r)/gm, '<br>');
+
+            // Clean up list issues (simple approach for demonstration)
+            if (html.includes('<ul>')) {
+                // Remove redundant <ul> and </ul> markers generated by simple regex
+                html = html.replace(/<br><ul>/g, '<ul>').replace(/<\/ul><br>/g, '</ul>');
+            }
+
+            return html;
+        }
+
+        /**
+         * Fetches financial data from the Gemini API with Google Search grounding and exponential backoff.
+         * @param {string} userQuery - The user's input query.
+         */
+        async function fetchFinancialData(userQuery) {
+            // 1. Setup UI for loading state
+            submitButton.disabled = true;
+            buttonText.textContent = 'Searching & Analyzing...';
+            loader.classList.remove('hidden');
+            messageBox.innerHTML = '<div class="flex items-center justify-center space-x-2"><div class="loader"></div><span>Fetching latest data...</span></div>';
+            generatedTextContainer.innerHTML = '';
+            citationsContainer.classList.add('hidden');
+            sourcesList.innerHTML = '';
+
+            // 2. Construct the API payload
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                tools: [{ "google_search": {} }], // Enable Google Search Grounding
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+
+            const maxRetries = 5;
+            let delay = 1000; // Initial delay in ms (1 second)
+
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 429 && attempt < maxRetries - 1) {
+                            console.warn(`Attempt ${attempt + 1} failed (Rate Limit). Retrying in ${delay / 1000}s...`);
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            delay *= 2; // Exponential backoff
+                            continue;
+                        }
+                        throw new Error(`API call failed with status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const candidate = result.candidates?.[0];
+
+                    if (candidate && candidate.content?.parts?.[0]?.text) {
+                        const text = candidate.content.parts[0].text;
+                        let sources = [];
+
+                        // Extract grounding sources
+                        const groundingMetadata = candidate.groundingMetadata;
+                        if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                            sources = groundingMetadata.groundingAttributions
+                                .map(attribution => ({
+                                    uri: attribution.web?.uri,
+                                    title: attribution.web?.title,
+                                }))
+                                .filter(source => source.uri && source.title);
+                        }
+
+                        // 3. Update UI with results
+                        messageBox.classList.add('hidden');
+                        generatedTextContainer.innerHTML = simpleMarkdownToHtml(text);
+
+                        if (sources.length > 0) {
+                            sources.forEach(source => {
+                                const li = document.createElement('li');
+                                li.innerHTML = `<a href="${source.uri}" target="_blank" class="text-caribbean-blue hover:text-blue-700 hover:underline">${source.title}</a>`;
+                                sourcesList.appendChild(li);
+                            });
+                            citationsContainer.classList.remove('hidden');
+                        } else {
+                            citationsContainer.classList.add('hidden');
+                        }
+
+                        return; // Exit function on success
+
+                    } else {
+                        throw new Error("Received an invalid response format from the API.");
+                    }
+
+                } catch (error) {
+                    console.error('Error fetching data:', error);
+                    messageBox.classList.remove('hidden');
+                    messageBox.classList.remove('bg-blue-50', 'border-caribbean-blue');
+                    messageBox.classList.add('bg-red-100', 'border-red-500');
+                    messageBox.innerHTML = `<strong>Error:</strong> Failed to fetch financial data. Please try a different query or check the console for details.`;
+                    break; // Exit loop on unexpected error
+                }
+            }
+
+            // 4. Reset UI state
+            submitButton.disabled = false;
+            buttonText.textContent = 'Analyze & Search';
+            loader.classList.add('hidden');
+        }
+
+        // --- Event Listener ---
+        form.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const userQuery = queryInput.value.trim();
+            if (userQuery) {
+                fetchFinancialData(userQuery);
+            }
+        });
+
+        // Initialize Message Box after DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', () => {
+             // Ensure the initial message is visible and correct
+             messageBox.classList.remove('hidden');
+             messageBox.classList.add('bg-blue-50', 'border-caribbean-blue');
+             messageBox.innerHTML = 'Enter a question above to get financial insights from our Diaspora Analyst.';
+        });
+
+    </script>
+</body>
+</html>
